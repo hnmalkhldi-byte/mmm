@@ -203,6 +203,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(f"📊 **إحصائياتك**\n\n❤️ المفضلة: {s['favorites']}\n📖 روايات قرأتها: {s['reads']}",
             reply_markup=back_main_button(), parse_mode="Markdown"); return
 
+    # ===== أزرار الإدارة والنموذج (تُعالَج فقط للأدمن) =====
     if data.startswith(("adm_", "editf_", "confirm_del_", "form_")):
         if not is_admin(uid):
             await q.answer("⛔ لا تملك صلاحية.", show_alert=True); return
@@ -533,8 +534,11 @@ async def cancel(update, context):
 dbm.init_db()
 application = Application.builder().token(config.BOT_TOKEN).build()
 
-application.add_handler(CallbackQueryHandler(buttons))
+# 1. أوامر
+application.add_handler(CommandHandler("start", start))
+application.add_handler(CommandHandler("admin", admin_cmd))
 
+# 2. حوارات (ConversationHandlers) — يجب أن تكون قبل CallbackQueryHandler العام
 form_conv = ConversationHandler(
     entry_points=[CallbackQueryHandler(handle_admin_buttons, pattern="^(form_e_|form_addvol|form_up_)")],
     states={
@@ -544,7 +548,9 @@ form_conv = ConversationHandler(
         F_COVER: [MessageHandler(filters.PHOTO, form_cover)],
         F_PDF: [MessageHandler(filters.Document.PDF, form_pdf)],
     },
-    fallbacks=[CommandHandler("cancel", cancel)], per_message=False,
+    fallbacks=[CommandHandler("cancel", cancel)],
+    per_message=False,
+    allow_reentry=True,
 )
 
 add_vol_conv = ConversationHandler(
@@ -553,37 +559,49 @@ add_vol_conv = ConversationHandler(
         ADDVOL_NUM: [MessageHandler(filters.TEXT & ~filters.COMMAND, addvol_num)],
         ADDVOL_FILE: [MessageHandler(filters.Document.PDF, addvol_file)],
     },
-    fallbacks=[CommandHandler("cancel", cancel)], per_message=False,
+    fallbacks=[CommandHandler("cancel", cancel)],
+    per_message=False,
+    allow_reentry=True,
 )
 
 edit_conv = ConversationHandler(
     entry_points=[CallbackQueryHandler(handle_admin_buttons, pattern="^editf_")],
     states={E_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_value)]},
-    fallbacks=[CommandHandler("cancel", cancel)], per_message=False,
+    fallbacks=[CommandHandler("cancel", cancel)],
+    per_message=False,
+    allow_reentry=True,
 )
 
 broadcast_conv = ConversationHandler(
     entry_points=[CallbackQueryHandler(handle_admin_buttons, pattern="^adm_broadcast$")],
     states={B_WAIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, broadcast_wait)]},
-    fallbacks=[CommandHandler("cancel", cancel)], per_message=False,
+    fallbacks=[CommandHandler("cancel", cancel)],
+    per_message=False,
+    allow_reentry=True,
 )
 
 request_conv = ConversationHandler(
     entry_points=[CallbackQueryHandler(request_novel_start, pattern="^request_novel$")],
     states={RQ_WAIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, request_novel_wait)]},
-    fallbacks=[CommandHandler("cancel", cancel)], per_message=False,
+    fallbacks=[CommandHandler("cancel", cancel)],
+    per_message=False,
+    allow_reentry=True,
 )
 
 report_conv = ConversationHandler(
     entry_points=[CallbackQueryHandler(report_start, pattern="^report$")],
     states={RP_WAIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, report_wait)]},
-    fallbacks=[CommandHandler("cancel", cancel)], per_message=False,
+    fallbacks=[CommandHandler("cancel", cancel)],
+    per_message=False,
+    allow_reentry=True,
 )
 
 search_conv = ConversationHandler(
     entry_points=[CallbackQueryHandler(search_start, pattern="^(search_start|lib_search)$")],
     states={S_WAIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_wait)]},
-    fallbacks=[CommandHandler("cancel", cancel)], per_message=False,
+    fallbacks=[CommandHandler("cancel", cancel)],
+    per_message=False,
+    allow_reentry=True,
 )
 
 application.add_handler(form_conv)
@@ -594,5 +612,5 @@ application.add_handler(request_conv)
 application.add_handler(report_conv)
 application.add_handler(search_conv)
 
-application.add_handler(CommandHandler("start", start))
-application.add_handler(CommandHandler("admin", admin_cmd))
+# 3. المعالج العام للأزرار (يأتي في النهاية)
+application.add_handler(CallbackQueryHandler(buttons))
