@@ -5,6 +5,8 @@ from bot import application
 
 app = Flask(__name__)
 
+_initialized = False
+
 
 @app.route("/")
 def index():
@@ -13,16 +15,21 @@ def index():
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    global _initialized
     try:
         data = request.get_json(force=True)
         update = Update.de_json(data, application.bot)
 
-        async def run():
-            await application.initialize()
-            await application.process_update(update)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
-        asyncio.run(run())
-        print("OK: Update processed", flush=True)
+        if not _initialized:
+            loop.run_until_complete(application.initialize())
+            _initialized = True
+
+        loop.run_until_complete(application.process_update(update))
+        loop.close()
+        print("OK", flush=True)
     except Exception as e:
         print(f"ERROR: {e}", flush=True)
         import traceback
