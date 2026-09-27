@@ -203,15 +203,14 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.edit_message_text(f"📊 **إحصائياتك**\n\n❤️ المفضلة: {s['favorites']}\n📖 روايات قرأتها: {s['reads']}",
             reply_markup=back_main_button(), parse_mode="Markdown"); return
 
-    # ===== أزرار الإدارة والنموذج (تُعالَج فقط للأدمن) =====
-    if data.startswith(("adm_", "editf_", "confirm_del_", "form_")):
+    # ===== أزرار الإدارة العامة =====
+    if data.startswith(("adm_", "confirm_del_")):
         if not is_admin(uid):
             await q.answer("⛔ لا تملك صلاحية.", show_alert=True); return
         return await handle_admin_buttons(q, context, data)
 
 
 async def show_novel(q, nid):
-    """عرض مبسط للمستخدم العادي (بدون وصف أو غلاف)"""
     n = dbm.get_novel(nid)
     if not n:
         await q.edit_message_text("❌ الرواية غير موجودة.", reply_markup=back_main_button()); return
@@ -232,61 +231,42 @@ async def handle_admin_buttons(q, context, data):
         await q.edit_message_text(render_form_text(form), reply_markup=add_novel_form_keyboard(form), parse_mode="Markdown")
         return
 
-    if data.startswith("form_"):
+    if data == "form_noop":
+        return
+
+    if data == "form_back":
         form = context.user_data.get("form")
         if not form:
             await q.edit_message_text("⚠️ الجلسة انتهت.", reply_markup=admin_menu()); return
+        await q.edit_message_text(render_form_text(form), reply_markup=add_novel_form_keyboard(form), parse_mode="Markdown"); return
 
-        if data == "form_noop":
-            return
+    if data == "form_cancel":
+        context.user_data.pop("form", None)
+        await q.edit_message_text("❌ تم الإلغاء.", reply_markup=admin_menu()); return
 
-        if data == "form_back":
-            await q.edit_message_text(render_form_text(form), reply_markup=add_novel_form_keyboard(form), parse_mode="Markdown"); return
+    if data.startswith("form_delvol_"):
+        form = context.user_data.get("form")
+        if not form:
+            await q.edit_message_text("⚠️ الجلسة انتهت.", reply_markup=admin_menu()); return
+        num = int(data.split("_")[2])
+        form["volumes"] = [v for v in form["volumes"] if v["number"] != num]
+        context.user_data["form"] = form
+        await q.edit_message_text(render_form_text(form), reply_markup=add_novel_form_keyboard(form), parse_mode="Markdown"); return
 
-        if data == "form_cancel":
-            context.user_data.pop("form", None)
-            await q.edit_message_text("❌ تم الإلغاء.", reply_markup=admin_menu()); return
-
-        if data == "form_e_title":
-            await q.edit_message_text("📖 أرسل اسم الرواية:", reply_markup=form_back_keyboard()); return F_TITLE
-        if data == "form_e_author":
-            await q.edit_message_text("✍️ أرسل اسم المؤلف:", reply_markup=form_back_keyboard()); return F_AUTHOR
-        if data == "form_e_desc":
-            await q.edit_message_text("📝 أرسل وصف الرواية:", reply_markup=form_back_keyboard()); return F_DESC
-        if data == "form_e_cover":
-            await q.edit_message_text("🖼️ أرسل صورة الغلاف:", reply_markup=form_back_keyboard()); return F_COVER
-
-        if data == "form_addvol":
-            num = form["next_vol"]
-            form["volumes"].append({"number": num, "pdf": None})
-            form["next_vol"] += 1
-            context.user_data["form"] = form
-            context.user_data["up_vol"] = num
-            await q.edit_message_text(f"📕 أرسل ملف PDF للمجلد {num}:", reply_markup=form_back_keyboard())
-            return F_PDF
-
-        if data.startswith("form_up_"):
-            num = int(data.split("_")[2])
-            context.user_data["up_vol"] = num
-            await q.edit_message_text(f"📕 أرسل ملف PDF للمجلد {num}:", reply_markup=form_back_keyboard())
-            return F_PDF
-
-        if data.startswith("form_delvol_"):
-            num = int(data.split("_")[2])
-            form["volumes"] = [v for v in form["volumes"] if v["number"] != num]
-            context.user_data["form"] = form
-            await q.edit_message_text(render_form_text(form), reply_markup=add_novel_form_keyboard(form), parse_mode="Markdown"); return
-
-        if data == "form_save":
-            if not (form['title'] and form['author'] and form['volumes']):
-                await q.answer("⚠️ املأ الحقول الأساسية.", show_alert=True); return
-            nid = dbm.add_novel(form['title'], form['author'], "", form['description'], "", form['cover'])
-            for v in form['volumes']:
-                if v.get('pdf'):
-                    dbm.add_volume(nid, v['number'], v['pdf'])
-            context.user_data.pop("form", None)
-            await q.edit_message_text(f"✅ تم حفظ الرواية (ID: {nid})\n📚 عدد المجلدات: {len(form['volumes'])}",
-                reply_markup=admin_menu()); return
+    if data == "form_save":
+        form = context.user_data.get("form")
+        if not form:
+            await q.edit_message_text("⚠️ الجلسة انتهت.", reply_markup=admin_menu()); return
+        if not (form['title'] and form['author'] and form['volumes']):
+            await q.answer("⚠️ املأ الحقول الأساسية.", show_alert=True); return
+        nid = dbm.add_novel(form['title'], form['author'], "", form['description'], "", form['cover'])
+        for v in form['volumes']:
+            if v.get('pdf'):
+                dbm.add_volume(nid, v['number'], v['pdf'])
+        count = len(form['volumes'])
+        context.user_data.pop("form", None)
+        await q.edit_message_text(f"✅ تم حفظ الرواية (ID: {nid})\n📚 عدد المجلدات: {count}",
+            reply_markup=admin_menu()); return
 
     if data == "adm_manage":
         novels = dbm.get_all_novels()
@@ -303,24 +283,9 @@ async def handle_admin_buttons(q, context, data):
         await q.edit_message_text(f"⚙️ **إدارة:** {escape_md(n['title'])}\n\nاختر عملية:",
             reply_markup=admin_novel_actions(nid), parse_mode="Markdown"); return
 
-    if data.startswith("adm_addvol_"):
-        nid = int(data.split("_")[2])
-        context.user_data["add_vol_nid"] = nid
-        await q.edit_message_text("➕ **إضافة مجلد**\n\nأرسل رقم المجلد:\n_(/cancel للإلغاء)_")
-        return ADDVOL_NUM
-
     if data.startswith("adm_editnov_"):
         nid = int(data.split("_")[2])
         await q.edit_message_text("✏️ اختر الحقل:", reply_markup=admin_edit_fields(nid)); return
-
-    if data.startswith("editf_"):
-        parts = data.split("_")
-        nid = int(parts[1]); field = parts[2]
-        context.user_data["edit_nid"] = nid
-        context.user_data["edit_field"] = field
-        labels = {"title": "الاسم", "author": "المؤلف", "description": "الوصف"}
-        await q.edit_message_text(f"✏️ أرسل القيمة الجديدة لـ **{labels.get(field, field)}**:\n_(/cancel)_", parse_mode="Markdown")
-        return E_VALUE
 
     if data.startswith("adm_delnov_"):
         nid = int(data.split("_")[2])
@@ -365,9 +330,72 @@ async def handle_admin_buttons(q, context, data):
                  f"⚠️ البلاغات: {dbm.count_reports()}")
         await q.edit_message_text(stats, reply_markup=admin_menu(), parse_mode="Markdown"); return
 
-    if data == "adm_broadcast":
-        await q.edit_message_text("📢 **إرسال إعلان**\n\nأرسل الرسالة:\n_(/cancel)_")
-        return B_WAIT
+
+# ===== دوال دخول الحوارات (Entry Points) =====
+async def form_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    data = q.data
+    form = context.user_data.get("form")
+    if not form:
+        await q.edit_message_text("⚠️ الجلسة انتهت. ابدأ من جديد.", reply_markup=admin_menu())
+        return ConversationHandler.END
+
+    if data == "form_e_title":
+        await q.edit_message_text("📖 أرسل اسم الرواية:", reply_markup=form_back_keyboard())
+        return F_TITLE
+    if data == "form_e_author":
+        await q.edit_message_text("✍️ أرسل اسم المؤلف:", reply_markup=form_back_keyboard())
+        return F_AUTHOR
+    if data == "form_e_desc":
+        await q.edit_message_text("📝 أرسل وصف الرواية:", reply_markup=form_back_keyboard())
+        return F_DESC
+    if data == "form_e_cover":
+        await q.edit_message_text("🖼️ أرسل صورة الغلاف:", reply_markup=form_back_keyboard())
+        return F_COVER
+    if data == "form_addvol":
+        num = form["next_vol"]
+        form["volumes"].append({"number": num, "pdf": None})
+        form["next_vol"] += 1
+        context.user_data["form"] = form
+        context.user_data["up_vol"] = num
+        await q.edit_message_text(f"📕 أرسل ملف PDF للمجلد {num}:", reply_markup=form_back_keyboard())
+        return F_PDF
+    if data.startswith("form_up_"):
+        num = int(data.split("_")[2])
+        context.user_data["up_vol"] = num
+        await q.edit_message_text(f"📕 أرسل ملف PDF للمجلد {num}:", reply_markup=form_back_keyboard())
+        return F_PDF
+    return ConversationHandler.END
+
+
+async def addvol_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    nid = int(q.data.split("_")[2])
+    context.user_data["add_vol_nid"] = nid
+    await q.edit_message_text("➕ **إضافة مجلد**\n\nأرسل رقم المجلد:\n_(/cancel للإلغاء)_")
+    return ADDVOL_NUM
+
+
+async def edit_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    parts = q.data.split("_")
+    nid = int(parts[1])
+    field = parts[2]
+    context.user_data["edit_nid"] = nid
+    context.user_data["edit_field"] = field
+    labels = {"title": "الاسم", "author": "المؤلف", "description": "الوصف"}
+    await q.edit_message_text(f"✏️ أرسل القيمة الجديدة لـ **{labels.get(field, field)}**:\n_(/cancel)_", parse_mode="Markdown")
+    return E_VALUE
+
+
+async def broadcast_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    await q.edit_message_text("📢 **إرسال إعلان**\n\nأرسل الرسالة:\n_(/cancel)_")
+    return B_WAIT
 
 
 # ===== Handlers الحوارات =====
@@ -534,13 +562,13 @@ async def cancel(update, context):
 dbm.init_db()
 application = Application.builder().token(config.BOT_TOKEN).build()
 
-# 1. أوامر
+# 1. الأوامر
 application.add_handler(CommandHandler("start", start))
 application.add_handler(CommandHandler("admin", admin_cmd))
 
-# 2. حوارات (ConversationHandlers) — يجب أن تكون قبل CallbackQueryHandler العام
+# 2. الحوارات (ConversationHandlers)
 form_conv = ConversationHandler(
-    entry_points=[CallbackQueryHandler(handle_admin_buttons, pattern="^(form_e_|form_addvol|form_up_)")],
+    entry_points=[CallbackQueryHandler(form_entry, pattern="^(form_e_|form_addvol|form_up_)")],
     states={
         F_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, form_title)],
         F_AUTHOR: [MessageHandler(filters.TEXT & ~filters.COMMAND, form_author)],
@@ -554,7 +582,7 @@ form_conv = ConversationHandler(
 )
 
 add_vol_conv = ConversationHandler(
-    entry_points=[CallbackQueryHandler(handle_admin_buttons, pattern="^adm_addvol_")],
+    entry_points=[CallbackQueryHandler(addvol_entry, pattern="^adm_addvol_")],
     states={
         ADDVOL_NUM: [MessageHandler(filters.TEXT & ~filters.COMMAND, addvol_num)],
         ADDVOL_FILE: [MessageHandler(filters.Document.PDF, addvol_file)],
@@ -565,7 +593,7 @@ add_vol_conv = ConversationHandler(
 )
 
 edit_conv = ConversationHandler(
-    entry_points=[CallbackQueryHandler(handle_admin_buttons, pattern="^editf_")],
+    entry_points=[CallbackQueryHandler(edit_entry, pattern="^editf_")],
     states={E_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, edit_value)]},
     fallbacks=[CommandHandler("cancel", cancel)],
     per_message=False,
@@ -573,7 +601,7 @@ edit_conv = ConversationHandler(
 )
 
 broadcast_conv = ConversationHandler(
-    entry_points=[CallbackQueryHandler(handle_admin_buttons, pattern="^adm_broadcast$")],
+    entry_points=[CallbackQueryHandler(broadcast_entry, pattern="^adm_broadcast$")],
     states={B_WAIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, broadcast_wait)]},
     fallbacks=[CommandHandler("cancel", cancel)],
     per_message=False,
@@ -612,5 +640,5 @@ application.add_handler(request_conv)
 application.add_handler(report_conv)
 application.add_handler(search_conv)
 
-# 3. المعالج العام للأزرار (يأتي في النهاية)
+# 3. المعالج العام للأزرار (في النهاية)
 application.add_handler(CallbackQueryHandler(buttons))
