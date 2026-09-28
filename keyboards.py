@@ -56,7 +56,6 @@ def novels_list_keyboard(novels, prefix="novel"):
 
 
 def novel_page_keyboard(novel_id, volumes, is_fav=False):
-    """صفحة رواية مبسطة للمستخدم العادي"""
     kb = []
     row = []
     for v in volumes:
@@ -142,7 +141,8 @@ def add_novel_form_keyboard(form):
         else:
             kb.append([InlineKeyboardButton(f"📕 المجلد {vol['number']} ⏳ رفع PDF", callback_data=f"form_up_{vol['number']}")])
     kb.append([InlineKeyboardButton("➕ إضافة مجلد", callback_data="form_addvol")])
-    if form['title'] and form['author'] and form['volumes'] and all(v.get('pdf') for v in form['volumes']):
+    # ===== التعديل: الزر يظهر بمجرد إدخال الاسم والمؤلف =====
+    if form['title'] and form['author']:
         kb.append([InlineKeyboardButton("✅ حفظ الرواية", callback_data="form_save")])
     kb.append([InlineKeyboardButton("❌ إلغاء", callback_data="form_cancel")])
     return InlineKeyboardMarkup(kb)
